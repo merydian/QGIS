@@ -946,12 +946,25 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
   }
   else if ( type == QLatin1String( "classBreaks" ) )
   {
-      const std::list<QString> visVarTypes = {QStringLiteral( "colorInfo" )};
       const QString attrName = rendererData.value( QStringLiteral( "field" ) ).toString();
       QgsGraduatedSymbolRenderer* graduatedRenderer = new QgsGraduatedSymbolRenderer(attrName);
 
-      const QVariantMap symbolData = rendererData.value( QStringLiteral( "symbol" ) ).toMap();
+      const QVariantList classBreakInfos = rendererData.value( QStringLiteral( "classBreakInfos" ) ).toList();
+      const QVariantMap authoringInfo = rendererData.value( QStringLiteral( "authoringInfo" ) ).toMap();
+      QVariantMap symbolData;
+      double maxSliderValue;
+
+      if ( !classBreakInfos.isEmpty() )
+      {
+          symbolData = classBreakInfos.at( 0 ).toMap().value( QStringLiteral( "symbol" ) ).toMap();
+      }
+      if ( !authoringInfo.isEmpty() )
+      {
+          maxSliderValue = authoringInfo.value( QStringLiteral( "visualVariables" ) ).toList().at( 0 ).toMap().value( QStringLiteral( "maxSliderValue" ) ).toFloat();
+      }
       std::unique_ptr< QgsSymbol > symbol( QgsArcGisRestUtils::convertSymbol( symbolData ) );
+      if ( !symbol )
+          return nullptr;
       graduatedRenderer->setSourceSymbol( symbol.release() );
 
       const QVariantList visualVariablesData = rendererData.value( QStringLiteral( "visualVariables" ) ).toList();
@@ -966,13 +979,13 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
               const QVariantMap stopData = stop.toMap();
               const QString label = stopData.value( QStringLiteral( "label" ) ).toString();
               const double breakpoint = stopData.value( QStringLiteral( "value" ) ).toFloat();
+              std::unique_ptr< QgsSymbol > symbolForStop( graduatedRenderer->sourceSymbol()->clone() );
 
-              if ( (std::find(visVarTypes.begin(), visVarTypes.end(), visualVariable.toMap().value( QStringLiteral( "type" ) ).toString()) != visVarTypes.end() ) )
+              if ( visualVariable.toMap().value( QStringLiteral( "type" ) ).toString() == QStringLiteral( "colorInfo" ) )
               {
                   // handle color change stops:
                   QColor fillColor = convertColor( stopData.value( QStringLiteral( "color" ) ) );
-                  std::unique_ptr< QgsSymbol > symbolForStop( graduatedRenderer->sourceSymbol()->clone() );
-                  // symbolForStop->setColor( fillColor );
+                  symbolForStop->setColor( fillColor );
 
                   QgsRendererRange range;
 
@@ -984,8 +997,18 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
                   lastValue = breakpoint;
                   graduatedRenderer->addClass( range );
               }
+
           }
+
       }
+      QgsRendererRange lastRange;
+      std::unique_ptr< QgsSymbol > lastSymbol( graduatedRenderer->sourceSymbol()->clone() );
+      QColor fillColor = convertColor( stopData.value( QStringLiteral( "color" ) ) );
+      lastSymbol->setColor( fillColor );
+      lastRange.setLowerValue( lastValue );
+      lastRange.setUpperValue( maxSliderValue );
+      lastRange.setSymbol( lastSymbol.release() );
+      graduatedRenderer->addClass( lastRange );
 
       return graduatedRenderer;
   }
