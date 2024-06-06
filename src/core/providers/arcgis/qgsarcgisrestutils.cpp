@@ -977,6 +977,7 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
       for ( const QVariant& visualVariable : visualVariablesData )
       {
           const QVariantList stops = visualVariable.toMap().value( QStringLiteral( "stops" ) ).toList();
+          QString lastLabel = nullptr;
 
           for (int i = 0; i < stops.size(); ++i)
           {
@@ -996,7 +997,12 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
 
                   range.setLowerValue( lastValue );
                   range.setUpperValue( breakpoint );
-                  range.setLabel( label );
+                  if (i != stops.size()-1)
+                  {
+                      range.setLabel( label );
+                  } else {
+                      lastLabel = label;
+                  }
                   range.setSymbol( symbolForStop.release() );
 
                   lastValue = breakpoint;
@@ -1010,6 +1016,7 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
               std::unique_ptr< QgsSymbol > lastSymbol( graduatedRenderer->sourceSymbol()->clone() );
               // QColor fillColor = convertColor( stopData.value( QStringLiteral( "color" ) ) );
               // lastSymbol->setColor( fillColor );
+              lastRange.setLabel( lastLabel );
               lastRange.setLowerValue( lastValue );
               lastRange.setUpperValue( maxSliderValue );
               lastRange.setSymbol( lastSymbol.release() );
