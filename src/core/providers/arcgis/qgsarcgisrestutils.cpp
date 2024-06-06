@@ -999,16 +999,20 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
               }
 
           }
-
+          if ( visualVariable.toMap().value( QStringLiteral( "type" ) ).toString() == QStringLiteral( "colorInfo" ) )
+          {
+              QgsRendererRange lastRange;
+              std::unique_ptr< QgsSymbol > lastSymbol( graduatedRenderer->sourceSymbol()->clone() );
+              // QColor fillColor = convertColor( stopData.value( QStringLiteral( "color" ) ) );
+              // lastSymbol->setColor( fillColor );
+              lastRange.setLowerValue( lastValue );
+              lastRange.setUpperValue( maxSliderValue );
+              lastRange.setSymbol( lastSymbol.release() );
+              graduatedRenderer->addClass( lastRange );
+          }
       }
-      QgsRendererRange lastRange;
-      std::unique_ptr< QgsSymbol > lastSymbol( graduatedRenderer->sourceSymbol()->clone() );
-      QColor fillColor = convertColor( stopData.value( QStringLiteral( "color" ) ) );
-      lastSymbol->setColor( fillColor );
-      lastRange.setLowerValue( lastValue );
-      lastRange.setUpperValue( maxSliderValue );
-      lastRange.setSymbol( lastSymbol.release() );
-      graduatedRenderer->addClass( lastRange );
+
+
 
       return graduatedRenderer;
   }
