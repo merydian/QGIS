@@ -963,6 +963,11 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
           maxSliderValue = authoringInfo.value( QStringLiteral( "visualVariables" ) ).toList().at( 0 ).toMap().value( QStringLiteral( "maxSliderValue" ) ).toFloat();
       }
       std::unique_ptr< QgsSymbol > symbol( QgsArcGisRestUtils::convertSymbol( symbolData ) );
+      double transparency = rendererData.value( QStringLiteral( "transparency" ) ).toFloat();
+
+      double opacity = (100.0 - transparency) / 100.0;
+      symbol->setOpacity(opacity);
+
       if ( !symbol )
           return nullptr;
       graduatedRenderer->setSourceSymbol( symbol.release() );
@@ -1011,8 +1016,6 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
               graduatedRenderer->addClass( lastRange );
           }
       }
-
-
 
       return graduatedRenderer;
   }
