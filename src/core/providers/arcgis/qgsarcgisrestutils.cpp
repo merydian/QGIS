@@ -45,6 +45,12 @@
 
 #include <QRegularExpression>
 #include <QUrl>
+#include <qgsapplication.h>
+#include <qgsclassificationcustom.h>
+#include <qgsclassificationfixedinterval.h>
+#include <qgsclassificationjenks.h>
+#include <qgsclassificationquantile.h>
+#include <qgsclassificationstandarddeviation.h>
 #include <qgsgraduatedsymbolrenderer.h>
 
 QVariant::Type QgsArcGisRestUtils::convertFieldType( const QString &esriFieldType )
@@ -953,6 +959,39 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
       const QVariantMap authoringInfo = rendererData.value( QStringLiteral( "authoringInfo" ) ).toMap();
       QVariantMap symbolData;
 
+      const QString esriMode = rendererData.value( QStringLiteral( "classificationMethod" ) ).toString();
+
+
+      if (esriMode == QString("esriClassifyDefinedInterval")){
+          QgsClassificationFixedInterval* method = new QgsClassificationFixedInterval();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+      if (esriMode == QString("esriClassifyEqualInterval")){
+          QgsClassificationCustom* method = new QgsClassificationCustom();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+      if (esriMode == QString("esriClassifyGeometricalInterval")){
+          QgsClassificationCustom* method = new QgsClassificationCustom();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+      if (esriMode == QString("esriClassifyManual")){
+          QgsClassificationCustom* method = new QgsClassificationCustom();
+          graduatedRenderer->setClassificationMethod(method);
+
+      }
+      if (esriMode == QString("esriClassifyNaturalBreaks")){
+          QgsClassificationJenks* method = new QgsClassificationJenks();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+      if (esriMode == QString("esriClassifyQuantile")){
+          QgsClassificationQuantile* method = new QgsClassificationQuantile();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+      if (esriMode == QString("esriClassifyStandardDeviation")){
+          QgsClassificationStandardDeviation* method = new QgsClassificationStandardDeviation();
+          graduatedRenderer->setClassificationMethod(method);
+      }
+
 
       if ( !classBreakInfos.isEmpty() )
       {
@@ -1021,7 +1060,6 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
           lastValue = classMaxValue;
           graduatedRenderer->addClass( range );
       }
-
 
 
       return graduatedRenderer;
