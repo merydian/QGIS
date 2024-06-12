@@ -47,6 +47,7 @@
 #include <QUrl>
 #include <qgsapplication.h>
 #include <qgsclassificationcustom.h>
+#include <qgsclassificationequalinterval.h>
 #include <qgsclassificationfixedinterval.h>
 #include <qgsclassificationjenks.h>
 #include <qgsclassificationquantile.h>
@@ -967,7 +968,7 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
           graduatedRenderer->setClassificationMethod(method);
       }
       if (esriMode == QString("esriClassifyEqualInterval")){
-          QgsClassificationCustom* method = new QgsClassificationCustom();
+          QgsClassificationEqualInterval* method = new QgsClassificationEqualInterval();
           graduatedRenderer->setClassificationMethod(method);
       }
       if (esriMode == QString("esriClassifyGeometricalInterval")){
@@ -977,7 +978,6 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
       if (esriMode == QString("esriClassifyManual")){
           QgsClassificationCustom* method = new QgsClassificationCustom();
           graduatedRenderer->setClassificationMethod(method);
-
       }
       if (esriMode == QString("esriClassifyNaturalBreaks")){
           QgsClassificationJenks* method = new QgsClassificationJenks();
