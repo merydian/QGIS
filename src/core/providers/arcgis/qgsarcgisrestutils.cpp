@@ -960,7 +960,10 @@ QgsFeatureRenderer *QgsArcGisRestUtils::convertRenderer( const QVariantMap &rend
       const QVariantMap authoringInfo = rendererData.value( QStringLiteral( "authoringInfo" ) ).toMap();
       QVariantMap symbolData;
 
-      const QString esriMode = rendererData.value( QStringLiteral( "classificationMethod" ) ).toString();
+      const QString esriMode = rendererData.value( QStringLiteral( "authoringInfo" ) ).toString();
+      if (esriMode.isEmpty()){
+          const QString esriMode = rendererData.value( QStringLiteral( "classificationMethod" ) ).toString();
+      }
 
 
       if (esriMode == QString("esriClassifyDefinedInterval")){
