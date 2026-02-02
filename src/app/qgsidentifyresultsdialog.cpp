@@ -113,6 +113,7 @@ const QgsSettingsEntryBool *QgsIdentifyResultsDialog::settingHideNullValues = ne
 
 const QgsSettingsEntryBool *QgsIdentifyResultsDialog::settingShowRelations = new QgsSettingsEntryBool( u"show-relations"_s, QgsSettingsTree::sTreeMap, true, u"Whether to show relations in the identify feature result"_s );
 
+const QgsSettingsEntryBool *QgsIdentifyResultsDialog::settingWordWrap = new QgsSettingsEntryBool( u"word-wrap"_s, QgsSettingsTree::sTreeMap, true, u"Whether to enable word wrap in the identify feature result"_s );
 
 QgsIdentifyResultsWebView::QgsIdentifyResultsWebView( QWidget *parent )
   : QgsWebView( parent )
@@ -368,6 +369,7 @@ QgsIdentifyResultsDialog::QgsIdentifyResultsDialog( QgsMapCanvas *canvas, QWidge
   connect( mActionAutoFeatureForm, &QAction::toggled, this, &QgsIdentifyResultsDialog::mActionAutoFeatureForm_toggled );
   connect( mActionHideDerivedAttributes, &QAction::toggled, this, &QgsIdentifyResultsDialog::mActionHideDerivedAttributes_toggled );
   connect( mActionHideNullValues, &QAction::toggled, this, &QgsIdentifyResultsDialog::mActionHideNullValues_toggled );
+  connect( mActionWordWrap, &QAction::toggled, this, &QgsIdentifyResultsDialog::mActionWordWrap_toggled );
   connect( mActionShowRelations, &QAction::toggled, this, &QgsIdentifyResultsDialog::mActionShowRelations_toggled );
 
   mOpenFormAction->setDisabled( true );
@@ -480,6 +482,8 @@ QgsIdentifyResultsDialog::QgsIdentifyResultsDialog( QgsMapCanvas *canvas, QWidge
   mActionHideNullValues->setChecked( QgsIdentifyResultsDialog::settingHideNullValues->value() );
   settingsMenu->addAction( mActionShowRelations );
   mActionShowRelations->setChecked( QgsIdentifyResultsDialog::settingShowRelations->value() );
+  settingsMenu->addAction( mActionWordWrap );
+  mActionWordWrap->setChecked( QgsIdentifyResultsDialog::settingWordWrap->value() );
 }
 
 QgsIdentifyResultsDialog::~QgsIdentifyResultsDialog()
@@ -825,15 +829,30 @@ QgsIdentifyResultsFeatureItem *QgsIdentifyResultsDialog::createFeatureItem( QgsV
       {
         QLabel *valueLabel = new QLabel( links );
         valueLabel->setOpenExternalLinks( true );
+        valueLabel->setWordWrap( true );
+
+        QScrollArea *scrollArea = new QScrollArea();
+        scrollArea->setWidget( valueLabel );
+        scrollArea->setWidgetResizable( true );
+        scrollArea->setFrameStyle( QFrame::NoFrame );
+
         attrItem->setData( 1, Qt::DisplayRole, QString() );
         QTreeWidget *tw = attrItem->treeWidget();
-        tw->setItemWidget( attrItem, 1, valueLabel );
+        tw->setItemWidget( attrItem, 1, scrollArea );
       }
       else
       {
-        attrItem->setData( 1, Qt::DisplayRole, representedValue );
+        QLabel *valueLabel = new QLabel( representedValue );
+        valueLabel->setWordWrap( true );
+
+        QScrollArea *scrollArea = new QScrollArea();
+        scrollArea->setWidget( valueLabel );
+        scrollArea->setWidgetResizable( true );
+        scrollArea->setFrameStyle( QFrame::NoFrame );
+
+        attrItem->setData( 1, Qt::DisplayRole, QString() );
         QTreeWidget *tw = attrItem->treeWidget();
-        tw->setItemWidget( attrItem, 1, nullptr );
+        tw->setItemWidget( attrItem, 1, scrollArea );
       }
     }
 
@@ -1348,13 +1367,29 @@ void QgsIdentifyResultsDialog::addFeature( QgsVectorTileLayer *layer, const QStr
     {
       QLabel *valueLabel = new QLabel( links );
       valueLabel->setOpenExternalLinks( true );
+      valueLabel->setWordWrap( true );
+
+      QScrollArea *scrollArea = new QScrollArea();
+      scrollArea->setWidget( valueLabel );
+      scrollArea->setWidgetResizable( true );
+      scrollArea->setFrameStyle( QFrame::NoFrame );
+
       attrItem->setData( 1, Qt::DisplayRole, QString() );
-      attrItem->treeWidget()->setItemWidget( attrItem, 1, valueLabel );
+      attrItem->treeWidget()->setItemWidget( attrItem, 1, scrollArea );
     }
     else
     {
-      attrItem->setData( 1, Qt::DisplayRole, value );
-      attrItem->treeWidget()->setItemWidget( attrItem, 1, nullptr );
+      QLabel *valueLabel = new QLabel( value );
+      valueLabel->setWordWrap( true );
+
+      QScrollArea *scrollArea = new QScrollArea();
+      scrollArea->setWidget( valueLabel );
+      scrollArea->setWidgetResizable( true );
+      scrollArea->setFrameStyle( QFrame::NoFrame );
+
+      attrItem->setData( 1, Qt::DisplayRole, QString() );
+      QTreeWidget *tw = attrItem->treeWidget();
+      tw->setItemWidget( attrItem, 1, scrollArea );
     }
   }
 
@@ -2372,14 +2407,30 @@ void QgsIdentifyResultsDialog::attributeValueChanged( QgsFeatureId fid, int idx,
           if ( foundLinks )
           {
             QLabel *valueLabel = new QLabel( links );
+            valueLabel->setWordWrap( true );
+
+            QScrollArea *scrollArea = new QScrollArea();
+            scrollArea->setWidget( valueLabel );
+            scrollArea->setWidgetResizable( true );
+            scrollArea->setFrameStyle( QFrame::NoFrame );
+
             valueLabel->setOpenExternalLinks( true );
             treeItem->setData( 1, Qt::DisplayRole, QString() );
-            treeItem->treeWidget()->setItemWidget( item, 1, valueLabel );
+            treeItem->treeWidget()->setItemWidget( item, 1, scrollArea );
           }
           else
           {
-            treeItem->setData( 1, Qt::DisplayRole, value );
-            treeItem->treeWidget()->setItemWidget( item, 1, nullptr );
+            QLabel *valueLabel = new QLabel( value );
+            valueLabel->setWordWrap( true );
+
+            QScrollArea *scrollArea = new QScrollArea();
+            scrollArea->setWidget( valueLabel );
+            scrollArea->setWidgetResizable( true );
+            scrollArea->setFrameStyle( QFrame::NoFrame );
+
+            treeItem->setData( 1, Qt::DisplayRole, QString() );
+            QTreeWidget *tw = treeItem->treeWidget();
+            tw->setItemWidget( treeItem, 1, scrollArea );
           }
           return;
         }
@@ -2720,6 +2771,11 @@ void QgsIdentifyResultsDialog::mActionHideDerivedAttributes_toggled( bool checke
 void QgsIdentifyResultsDialog::mActionHideNullValues_toggled( bool checked )
 {
   QgsIdentifyResultsDialog::settingHideNullValues->setValue( checked );
+}
+
+void QgsIdentifyResultsDialog::mActionWordWrap_toggled( bool checked )
+{
+  QgsIdentifyResultsDialog::settingWordWrap->setValue( checked );
 }
 
 void QgsIdentifyResultsDialog::mActionShowRelations_toggled( bool checked )

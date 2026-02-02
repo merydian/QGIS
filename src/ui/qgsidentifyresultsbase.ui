@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>465</width>
-    <height>490</height>
+    <width>473</width>
+    <height>534</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -115,7 +115,7 @@
        <item>
         <widget class="QTableWidget" name="tblResults">
          <property name="editTriggers">
-          <set>QAbstractItemView::NoEditTriggers</set>
+          <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
          </property>
          <property name="sortingEnabled">
           <bool>false</bool>
@@ -183,7 +183,7 @@
         </sizepolicy>
        </property>
        <property name="sizeAdjustPolicy">
-        <enum>QComboBox::AdjustToMinimumContentsLengthWithIcon</enum>
+        <enum>QComboBox::SizeAdjustPolicy::AdjustToMinimumContentsLengthWithIcon</enum>
        </property>
        <property name="minimumContentsLength">
         <number>6</number>
@@ -216,7 +216,7 @@
      <item>
       <spacer name="horizontalSpacer_2">
        <property name="orientation">
-        <enum>Qt::Horizontal</enum>
+        <enum>Qt::Orientation::Horizontal</enum>
        </property>
        <property name="sizeHint" stdset="0">
         <size>
@@ -415,6 +415,17 @@
    </property>
    <property name="toolTip">
     <string>Hide NULL Values from Results</string>
+   </property>
+  </action>
+  <action name="mActionWordWrap">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Word Wrap</string>
+   </property>
+   <property name="toolTip">
+    <string>Apply word wrap to the text displayed.</string>
    </property>
   </action>
  </widget>
