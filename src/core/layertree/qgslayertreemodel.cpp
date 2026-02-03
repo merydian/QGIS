@@ -182,11 +182,21 @@ QVariant QgsLayerTreeModel::data( const QModelIndex &index, int role ) const
       {
         const bool estimatedCount = vlayer->dataProvider() ? QgsDataSourceUri( vlayer->dataProvider()->dataSourceUri() ).useEstimatedMetadata() : false;
         const qlonglong count = vlayer->featureCount();
-
-        // if you modify this line, please update QgsSymbolLegendNode::updateLabel
-        name += u" [%1%2]"_s.arg(
-                  estimatedCount ? u"≈"_s : QString(),
-                  count != -1 ? QLocale().toString( count ) : tr( "N/A" ) );
+        const qlonglong count_selected_features = vlayer->selectedFeatureCount();
+        if ( count_selected_features > 0 )
+        {
+          name += u" [%1%2/%3]"_s.arg(
+                    estimatedCount ? u"≈"_s : QString(),
+                    QLocale().toString( count_selected_features ),
+                    count != -1 ? QLocale().toString( count ) : tr( "N/A" ) );
+        }
+        else
+        {
+          // if you modify this line, please update QgsSymbolLegendNode::updateLabel
+          name += u" [%1%2]"_s.arg(
+                    estimatedCount ? u"≈"_s : QString(),
+                    count != -1 ? QLocale().toString( count ) : tr( "N/A" ) );
+        }
       }
       return name;
     }
@@ -1048,6 +1058,11 @@ void QgsLayerTreeModel::connectToLayer( QgsLayerTreeLayer *nodeLayer )
   connect( layer, &QgsMapLayer::editingStopped, this, &QgsLayerTreeModel::layerNeedsUpdate, Qt::UniqueConnection );
   connect( layer, &QgsMapLayer::layerModified, this, &QgsLayerTreeModel::layerNeedsUpdate, Qt::UniqueConnection );
 
+  // Connect to selection changes for vector layers to update feature count display
+  if ( QgsVectorLayer *vl = qobject_cast<QgsVectorLayer *>( layer ) )
+  {
+    connect( vl, &QgsVectorLayer::selectionChanged, this, &QgsLayerTreeModel::layerNeedsUpdate, Qt::UniqueConnection );
+  }
   emit dataChanged( node2index( nodeLayer ), node2index( nodeLayer ) );
 }
 
