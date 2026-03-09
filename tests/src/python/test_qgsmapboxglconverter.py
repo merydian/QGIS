@@ -2957,6 +2957,49 @@ class TestQgsMapBoxGlStyleConverter(QgisTestCase):
         expected = "CASE WHEN \"class\" IN ('sinkhole') THEN 'base64:[snip]' WHEN \"class\" IN ('sinkhole_rock','sinkhole_scree') THEN 'base64:[snip]' WHEN \"class\" IN ('sinkhole_ice','sinkhole_water') THEN 'base64:[snip]' ELSE '' END"
         self.assertEqual(strip_base64(sprite_property), expected)
 
+    def testRetrieveSpriteCoalesce(self):
+        context = QgsMapBoxGlStyleConversionContext()
+        sprite_image_file = (
+            f"{TEST_DATA_DIR}/vector_tile/sprites/swisstopo-sprite@2x.png"
+        )
+        with open(sprite_image_file, "rb") as f:
+            sprite_image = QImage()
+            sprite_image.loadFromData(f.read())
+        sprite_definition_file = (
+            f"{TEST_DATA_DIR}/vector_tile/sprites/swisstopo-sprite@2x.json"
+        )
+        with open(sprite_definition_file) as f:
+            sprite_definition = json.load(f)
+        context.setSprites(sprite_image, sprite_definition)
+
+        # coalesce should fall back to the next valid sprite
+        icon_image = [
+            "coalesce",
+            ["image", "arrow_line_orange"],
+            ["image", "arrow_line_blue"],
+        ]
+
+        sprite, size, sprite_property, sprite_size_property = (
+            QgsMapBoxGlStyleConverter.retrieveSpriteAsBase64WithProperties(
+                icon_image, context
+            )
+        )
+
+        def strip_base64(s):
+            pos = 0
+            while True:
+                pos = s.find("'base64:", pos)
+                if pos < 0:
+                    break
+                end_pos = s.find("'", pos + 1)
+                assert end_pos > pos
+                s = s[0:pos] + "'base64:[snip]'" + s[end_pos + 1 :]
+                pos += len("'base64:")
+            return s
+
+        expected = "CASE WHEN 'arrow_line_blue' IS NOT NULL THEN 'base64:[snip]' ELSE 'base64:[snip]' END"
+        self.assertEqual(strip_base64(sprite_property), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

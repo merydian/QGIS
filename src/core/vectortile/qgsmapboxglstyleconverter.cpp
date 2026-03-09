@@ -3633,6 +3633,11 @@ QString QgsMapBoxGlStyleConverter::parseExpression( const QVariantList &expressi
     }
     return caseString;
   }
+  else if ( op == "image"_L1 )
+  {
+    const QString imageName = parseValue( expression.value( 1 ), context, false );
+    return imageName;
+  }
   else
   {
     context.pushWarning( QObject::tr( "%1: Skipping unsupported expression \"%2\"" ).arg( context.layerId(), op ) );
@@ -3949,6 +3954,33 @@ QString QgsMapBoxGlStyleConverter::retrieveSpriteAsBase64WithProperties(
 
         spriteProperty += u"ELSE '%1' END"_s.arg( spritePath );
         spriteSizeProperty += u"ELSE %3 END"_s.arg( spriteSize.width() );
+        break;
+      }
+      else if ( method == "coalesce"_L1 )
+      {
+        spriteProperty = u"CASE"_s;
+        spriteSizeProperty = u"CASE"_s;
+        for ( int i = 1; i < json.size(); ++i )
+        {
+          const QVariant variant = json.value( i );
+          const QString caseExpression = parseExpression( variant.toList(), context );
+          const QString caseValue = variant.toList().value( 1 ).toString();
+          const QImage sprite = retrieveSprite( caseValue, context, spriteSize );
+
+          if ( !sprite.isNull() )
+          {
+            spritePath = prepareBase64( sprite );
+            spriteProperty += u" WHEN %1 IS NOT NULL THEN '%2' "_s.arg( caseExpression ).arg( spritePath );
+            spriteSizeProperty += u" WHEN %1 IS NOT NULL THEN %2 "_s.arg( caseExpression ).arg( spriteSize.width() );
+          }
+        }
+        const QVariant variant = json.last();
+        const QString caseValue = variant.toList().value( 1 ).toString();
+        const QImage sprite = retrieveSprite( caseValue, context, spriteSize );
+        spritePath = prepareBase64( sprite );
+
+        spriteProperty += u"ELSE '%1' END"_s.arg( spritePath );
+        spriteSizeProperty += u"ELSE %1 END"_s.arg( spriteSize.width() );
         break;
       }
       else
