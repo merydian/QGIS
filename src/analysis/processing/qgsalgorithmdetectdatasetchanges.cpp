@@ -69,10 +69,12 @@ void QgsDetectVectorChangesAlgorithm::initAlgorithm( const QVariantMap & )
   addParameter( new QgsProcessingParameterFeatureSink( u"UNCHANGED"_s, QObject::tr( "Unchanged features" ), Qgis::ProcessingSourceType::VectorAnyGeometry, QVariant(), true, true ) );
   addParameter( new QgsProcessingParameterFeatureSink( u"ADDED"_s, QObject::tr( "Added features" ), Qgis::ProcessingSourceType::VectorAnyGeometry, QVariant(), true, true ) );
   addParameter( new QgsProcessingParameterFeatureSink( u"DELETED"_s, QObject::tr( "Deleted features" ), Qgis::ProcessingSourceType::VectorAnyGeometry, QVariant(), true, true ) );
+  addParameter( new QgsProcessingParameterFeatureSink( u"CHANGED"_s, QObject::tr( "Changed features" ), Qgis::ProcessingSourceType::VectorAnyGeometry, QVariant(), true, true ) );
 
   addOutput( new QgsProcessingOutputNumber( u"UNCHANGED_COUNT"_s, QObject::tr( "Count of unchanged features" ) ) );
   addOutput( new QgsProcessingOutputNumber( u"ADDED_COUNT"_s, QObject::tr( "Count of features added in revised layer" ) ) );
   addOutput( new QgsProcessingOutputNumber( u"DELETED_COUNT"_s, QObject::tr( "Count of features deleted from original layer" ) ) );
+  addOutput( new QgsProcessingOutputNumber( u"CHANGED_COUNT"_s, QObject::tr( "Count of features changed between original and revised layers" ) ) );
 }
 
 QString QgsDetectVectorChangesAlgorithm::shortHelpString() const
@@ -189,252 +191,148 @@ QVariantMap QgsDetectVectorChangesAlgorithm::processAlgorithm( const QVariantMap
   if ( !deletedSink && parameters.value( u"DELETED"_s ).isValid() )
     throw QgsProcessingException( invalidSinkError( parameters, u"DELETED"_s ) );
 
-  // first iteration: we loop through the entire original layer, building up a spatial index of ALL original geometries
-  // and collecting the original geometries themselves along with the attributes to compare
-  QgsFeatureRequest request;
-  request.setSubsetOfAttributes( mOriginalFieldsToCompareIndices );
+  QString changedDestId;
+  std::unique_ptr<QgsFeatureSink> changedSink( parameterAsSink( parameters, u"CHANGED"_s, context, changedDestId, mRevised->fields(), mRevised->wkbType(), mRevised->sourceCrs() ) );
+  if ( !changedSink && parameters.value( u"CHANGED"_s ).isValid() )
+    throw QgsProcessingException( invalidSinkError( parameters, u"CHANGED"_s ) );
 
-  QgsFeatureIterator it = mOriginal->getFeatures( request );
+  QSet<QgsFeatureId> unchangedIds;
+  QSet<QgsFeatureId> addedIds;
+  QSet<QgsFeatureId> deletedIds;
+  QSet<QgsFeatureId> changedIds;
 
-  double step = mOriginal->featureCount() > 0 ? 100.0 / mOriginal->featureCount() : 0;
-  QHash<QgsFeatureId, QgsGeometry> originalGeometries;
-  QHash<QgsFeatureId, QgsAttributes> originalAttributes;
-  QHash<QgsAttributes, QgsFeatureId> originalNullGeometryAttributes;
-  long current = 0;
+  QgsFeature f;
+  QgsFeatureRequest req;
 
-  QgsAttributes attrs;
-  attrs.resize( mFieldsToCompare.size() );
+  QSet<QgsFeatureId> beforeIds;
+  QgsFeatureIterator it = mOriginal->getFeatures( req );
+  while ( it.nextFeature( f ) )
+  {
+    beforeIds.insert( f.id() );
+  }
 
-  const QgsSpatialIndex index( it, [&]( const QgsFeature &f ) -> bool {
-    if ( feedback->isCanceled() )
-      return false;
+  QSet<QgsFeatureId> afterIds;
+  it = mRevised->getFeatures( req );
+  while ( it.nextFeature( f ) )
+  {
+    afterIds.insert( f.id() );
+  }
 
-    if ( f.hasGeometry() )
-    {
-      originalGeometries.insert( f.id(), f.geometry() );
-    }
-
-    if ( !mFieldsToCompare.empty() )
-    {
-      int idx = 0;
-      for ( const int field : mOriginalFieldsToCompareIndices )
-      {
-        attrs[idx++] = f.attributes().at( field );
-      }
-      originalAttributes.insert( f.id(), attrs );
-    }
-
-    if ( !f.hasGeometry() )
-    {
-      if ( originalNullGeometryAttributes.contains( attrs ) )
-      {
-        feedback->reportError(
-          QObject::tr(
-            "A non-unique set of comparison attributes was found for "
-            "one or more features without geometries - results may be misleading (features %1 and %2)"
-          )
-            .arg( f.id() )
-            .arg( originalNullGeometryAttributes.value( attrs ) )
-        );
-      }
-      else
-      {
-        originalNullGeometryAttributes.insert( attrs, f.id() );
-      }
-    }
-
-    // overall this loop takes about 10% of time
-    current++;
-    feedback->setProgress( 0.10 * current * step );
-    return true;
-  } );
-
-  QSet<QgsFeatureId> unchangedOriginalIds;
-  QSet<QgsFeatureId> addedRevisedIds;
-  current = 0;
-
-  // second iteration: we loop through ALL revised features, checking whether each is a match for a geometry from the
-  // original set. If so, check if the feature is unchanged. If there's no match with the original features, we mark it as an "added" feature
-  step = mRevised->featureCount() > 0 ? 100.0 / mRevised->featureCount() : 0;
+  double step = mRevised->featureCount() > 0 ? 100.0 / mRevised->featureCount() : 0;
   QgsFeatureRequest revisedRequest = QgsFeatureRequest().setDestinationCrs( mOriginal->sourceCrs(), context.transformContext() );
   revisedRequest.setSubsetOfAttributes( mRevisedFieldsToCompareIndices );
   it = mRevised->getFeatures( revisedRequest );
   QgsFeature revisedFeature;
+  long current = 0;
+
   while ( it.nextFeature( revisedFeature ) )
   {
     if ( feedback->isCanceled() )
       break;
 
-    int idx = 0;
-    for ( const int field : mRevisedFieldsToCompareIndices )
+    if ( beforeIds.contains( revisedFeature.id() ) )
     {
-      attrs[idx++] = revisedFeature.attributes().at( field );
-    }
+      // Feature exists in original layer, check if unchanged or changed
+      bool equals = true;
+      QgsFeatureRequest origRequest;
+      origRequest.setFilterFid( revisedFeature.id() );
+      origRequest.setDestinationCrs( mOriginal->sourceCrs(), context.transformContext() );
+      origRequest.setSubsetOfAttributes( mOriginalFieldsToCompareIndices );
+      QgsFeatureIterator origIt = mOriginal->getFeatures( origRequest );
+      QgsFeature originalFeature;
 
-    bool matched = false;
-
-    if ( !revisedFeature.hasGeometry() )
-    {
-      if ( originalNullGeometryAttributes.contains( attrs ) )
+      if ( origIt.nextFeature( originalFeature ) )
       {
-        // found a match for feature
-        unchangedOriginalIds.insert( originalNullGeometryAttributes.value( attrs ) );
-        matched = true;
-      }
-    }
-    else
-    {
-      // can we match this feature?
-      const QList<QgsFeatureId> candidates = index.intersects( revisedFeature.geometry().boundingBox() );
-
-      // lazy evaluate -- there may be NO candidates!
-      QgsGeometry revised;
-
-      for ( const QgsFeatureId candidateId : candidates )
-      {
-        if ( unchangedOriginalIds.contains( candidateId ) )
+        // Compare only the selected attributes
+        for ( int i : mOriginalFieldsToCompareIndices )
         {
-          // already matched this original feature
-          continue;
-        }
-
-        // attribute comparison is faster to do first, if desired
-        if ( !mFieldsToCompare.empty() )
-        {
-          if ( attrs != originalAttributes[candidateId] )
+          if ( originalFeature.attribute( i ) != revisedFeature.attribute( mRevisedFieldsToCompareIndices.indexOf( i ) ) )
           {
-            // attributes don't match, so candidates is not a match
-            continue;
+            equals = false;
+            break;
           }
         }
 
-        QgsGeometry original = originalGeometries.value( candidateId );
-        // lazy evaluation
-        if ( revised.isNull() )
+        // Also compare geometry if both have geometry
+        if ( equals && revisedFeature.hasGeometry() && originalFeature.hasGeometry() )
         {
-          revised = revisedFeature.geometry();
-          // drop z/m if not wanted for match
+          bool geometryMatch = false;
           switch ( mMatchType )
           {
             case Topological:
-            {
-              revised.get()->dropMValue();
-              revised.get()->dropZValue();
-              original.get()->dropMValue();
-              original.get()->dropZValue();
+              geometryMatch = revisedFeature.geometry().isTopologicallyEqual( originalFeature.geometry() );
               break;
-            }
-
             case Exact:
+              geometryMatch = revisedFeature.geometry().isExactlyEqual( originalFeature.geometry() );
               break;
           }
-        }
 
-        bool geometryMatch = false;
-        switch ( mMatchType )
-        {
-          case Topological:
+          if ( !geometryMatch )
           {
-            geometryMatch = revised.isTopologicallyEqual( original );
-            break;
+            equals = false;
           }
-
-          case Exact:
-            geometryMatch = revised.isExactlyEqual( original );
-            break;
         }
 
-        if ( geometryMatch )
+        if ( equals )
         {
-          // candidate is a match for feature
-          unchangedOriginalIds.insert( candidateId );
-          matched = true;
-          break;
+          unchangedIds.insert( revisedFeature.id() );
+          if ( unchangedSink )
+          {
+            if ( !unchangedSink->addFeature( revisedFeature, QgsFeatureSink::FastInsert ) )
+              throw QgsProcessingException( writeFeatureError( unchangedSink.get(), parameters, u"UNCHANGED"_s ) );
+          }
+        }
+        else
+        {
+          changedIds.insert( revisedFeature.id() );
+          if ( changedSink )
+          {
+            if ( !changedSink->addFeature( revisedFeature, QgsFeatureSink::FastInsert ) )
+              throw QgsProcessingException( writeFeatureError( changedSink.get(), parameters, u"CHANGED"_s ) );
+          }
         }
       }
     }
-
-    if ( !matched )
+    else if ( afterIds.contains( revisedFeature.id() ) )
     {
-      // new feature
-      addedRevisedIds.insert( revisedFeature.id() );
+      // Added feature - in revised but not original
+      addedIds.insert( revisedFeature.id() );
+      if ( addedSink )
+      {
+        if ( !addedSink->addFeature( revisedFeature, QgsFeatureSink::FastInsert ) )
+          throw QgsProcessingException( writeFeatureError( addedSink.get(), parameters, u"ADDED"_s ) );
+      }
     }
 
     current++;
-    feedback->setProgress( 0.70 * current * step + 10 ); // takes about 70% of time
+    feedback->setProgress( 100.0 * current * step );
   }
 
-  // third iteration: iterate back over the original features, and direct them to the appropriate sink.
-  // If they were marked as unchanged during the second iteration, we put them in the unchanged sink. Otherwise
-  // they are placed into the deleted sink.
+  // Process original features for deleted ones
   step = mOriginal->featureCount() > 0 ? 100.0 / mOriginal->featureCount() : 0;
-
-  request = QgsFeatureRequest().setFlags( Qgis::FeatureRequestFlag::NoGeometry );
-  it = mOriginal->getFeatures( request );
+  req = QgsFeatureRequest();
+  it = mOriginal->getFeatures( req );
   current = 0;
-  long deleted = 0;
-  QgsFeature f;
+
   while ( it.nextFeature( f ) )
   {
     if ( feedback->isCanceled() )
       break;
 
-    // use already fetched geometry
-    f.setGeometry( originalGeometries.value( f.id(), QgsGeometry() ) );
-
-    if ( unchangedOriginalIds.contains( f.id() ) )
+    if ( !afterIds.contains( f.id() ) )
     {
-      // unchanged
-      if ( unchangedSink )
-      {
-        if ( !unchangedSink->addFeature( f, QgsFeatureSink::FastInsert ) )
-          throw QgsProcessingException( writeFeatureError( unchangedSink.get(), parameters, u"UNCHANGED"_s ) );
-      }
-    }
-    else
-    {
-      // deleted feature
+      // Deleted feature - in original but not revised
+      deletedIds.insert( f.id() );
       if ( deletedSink )
       {
         if ( !deletedSink->addFeature( f, QgsFeatureSink::FastInsert ) )
           throw QgsProcessingException( writeFeatureError( deletedSink.get(), parameters, u"DELETED"_s ) );
       }
-      deleted++;
     }
 
     current++;
-    feedback->setProgress( 0.10 * current * step + 80 ); // takes about 10% of time
+    feedback->setProgress( 100.0 * current * step );
   }
-
-  // forth iteration: collect all added features and add them to the added sink
-  // NOTE: while we could potentially do this as part of the second iteration and save some time, we instead
-  // do this here using a brand new request because the second iteration
-  // is fetching reprojected features and we ideally want geometries from the revised layer's actual CRS only here!
-  // also, the second iteration is only fetching the actual attributes used in the comparison, whereas we want
-  // to include all attributes in the "added" output
-  if ( addedSink )
-  {
-    step = addedRevisedIds.size() > 0 ? 100.0 / addedRevisedIds.size() : 0;
-    it = mRevised->getFeatures( QgsFeatureRequest().setFilterFids( addedRevisedIds ) );
-    current = 0;
-    while ( it.nextFeature( f ) )
-    {
-      if ( feedback->isCanceled() )
-        break;
-
-      // added feature
-      if ( !addedSink->addFeature( f, QgsFeatureSink::FastInsert ) )
-        throw QgsProcessingException( writeFeatureError( addedSink.get(), parameters, u"ADDED"_s ) );
-
-      current++;
-      feedback->setProgress( 0.10 * current * step + 90 ); // takes about 10% of time
-    }
-  }
-  feedback->setProgress( 100 );
-
-  feedback->pushInfo( QObject::tr( "%n feature(s) unchanged", nullptr, unchangedOriginalIds.size() ) );
-  feedback->pushInfo( QObject::tr( "%n feature(s) added", nullptr, addedRevisedIds.size() ) );
-  feedback->pushInfo( QObject::tr( "%n feature(s) deleted", nullptr, deleted ) );
 
   if ( unchangedSink )
     unchangedSink->finalize();
@@ -442,16 +340,22 @@ QVariantMap QgsDetectVectorChangesAlgorithm::processAlgorithm( const QVariantMap
     addedSink->finalize();
   if ( deletedSink )
     deletedSink->finalize();
+  if ( changedSink )
+    changedSink->finalize();
 
   QVariantMap outputs;
   outputs.insert( u"UNCHANGED"_s, unchangedDestId );
   outputs.insert( u"ADDED"_s, addedDestId );
   outputs.insert( u"DELETED"_s, deletedDestId );
-  outputs.insert( u"UNCHANGED_COUNT"_s, static_cast<long long>( unchangedOriginalIds.size() ) );
-  outputs.insert( u"ADDED_COUNT"_s, static_cast<long long>( addedRevisedIds.size() ) );
-  outputs.insert( u"DELETED_COUNT"_s, static_cast<long long>( deleted ) );
+  outputs.insert( u"CHANGED"_s, changedDestId );
+  outputs.insert( u"UNCHANGED_COUNT"_s, static_cast<long long>( unchangedIds.size() ) );
+  outputs.insert( u"ADDED_COUNT"_s, static_cast<long long>( addedIds.size() ) );
+  outputs.insert( u"DELETED_COUNT"_s, static_cast<long long>( deletedIds.size() ) );
+  outputs.insert( u"CHANGED_COUNT"_s, static_cast<long long>( changedIds.size() ) );
 
   return outputs;
 }
+
+///@endcond
 
 ///@endcond
