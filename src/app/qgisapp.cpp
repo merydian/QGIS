@@ -14165,6 +14165,7 @@ void QgisApp::removePluginMenu( const QString &name, QAction *action )
   if ( menu->actions().isEmpty() )
   {
     mPluginMenu->removeAction( menu->menuAction() );
+    menu->deleteLater();
   }
   // Remove separator above plugins in Plugin menu if no plugins remain
   QList<QAction *> actions = mPluginMenu->actions();
